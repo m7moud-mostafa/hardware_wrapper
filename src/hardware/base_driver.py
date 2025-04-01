@@ -23,17 +23,17 @@ class BaseDriver(ABC):
         self.__isRunning = True
 
         # Store instance info
-        BaseDriver.instancesInfo[self.msgName] = {
-            "id": self.msgID,
+        BaseDriver.instancesInfo[self.__msgName] = {
+            "id": self.__msgID,
             "protocol": self.__class__.__name__,
-            "operation": self.operation,
+            "operation": self.__operation,
             "running": self.__isRunning
         }
 
     def stop(self):
         """Stops the driver safely"""
         self.__isRunning = False
-        BaseDriver.instancesInfo[self.msgName]["running"] = self.__isRunning
+        BaseDriver.instancesInfo[self.__msgName]["running"] = self.__isRunning
 
     @abstractmethod
     def send(self):
@@ -54,7 +54,7 @@ class BaseDriver(ABC):
     def msgName(self, value):
         """Sets the msg name value"""
         if not isinstance(value, str):
-            raise TypeError("msgName must be of type (str)")
+            raise TypeError("'msgName' must be of type (str)")
         self.__msgName = value
 
     @property
