@@ -7,7 +7,6 @@ Email: mah2002moud@gmail.com
 """
 
 from abc import ABC, abstractmethod
-import logging
 
 class BaseDriver(ABC):
     """
@@ -16,7 +15,7 @@ class BaseDriver(ABC):
     """
     instancesInfo = {}
 
-    def __init__(self, msgName, operation, msgID ):
+    def __init__(self, msgName, operation, msgID):
         """Initializing the function"""
         self.msgName = msgName
         self.operation = operation
@@ -24,10 +23,10 @@ class BaseDriver(ABC):
         self.__isRunning = True
 
         # Store instance info
-        BaseDriver.instancesInfo[self.__msgName] = {
-            "id": self.__msgID,
+        BaseDriver.instancesInfo[self.msgName] = {
+            "id": self.msgID,
             "protocol": self.__class__.__name__,
-            "operation": self.__opration,
+            "operation": self.operation,
             "running": self.__isRunning
         }
 
@@ -55,25 +54,24 @@ class BaseDriver(ABC):
     def msgName(self, value):
         """Sets the msg name value"""
         if not isinstance(value, str):
-            raise TypeError("msgName Value must be of type (str)")
+            raise TypeError("msgName must be of type (str)")
         self.__msgName = value
 
     @property
     def operation(self):
         """Returns the operation type"""
-        return self.__opration
+        return self.__operation
 
     @operation.setter
     def operation(self, value):
         """Sets the operation type value"""
         if not isinstance(value, str):
-            raise TypeError("operation value must be of type (str)")
+            raise TypeError("operation must be of type (str)")
 
-        supportedValues = ["send", "receive"]
-        if value not in supportedValues:
-            raise ValueError("operation value must be equal to either send/receive")
+        if value not in ["send", "receive"]:
+            raise ValueError("operation must be either 'send' or 'receive'")
 
-        self.__opration = value
+        self.__operation = value
 
     @property
     def msgID(self):
@@ -84,9 +82,5 @@ class BaseDriver(ABC):
     def msgID(self, value):
         """Sets the msgID value"""
         if not isinstance(value, int):
-            raise TypeError("msgID Value must be of type (int)")
+            raise TypeError("msgID must be of type (int)")
         self.__msgID = value
-
-if __name__ == "__main__":
-    # Creating an instance
-    x = BaseDriver("imu", "send", 3)
