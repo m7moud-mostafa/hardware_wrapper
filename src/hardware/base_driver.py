@@ -81,6 +81,6 @@ class BaseDriver(ABC):
     @msgID.setter
     def msgID(self, value):
         """Sets the msgID value"""
-        if not isinstance(value, int):
+        if not (isinstance(value, int) or value == None) :
             raise TypeError("msgID must be of type (int)")
         self.__msgID = value
