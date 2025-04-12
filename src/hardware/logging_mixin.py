@@ -61,7 +61,7 @@ class LoggingMixin:
             self.logger.addHandler(file_handler)
 
     def log_instance_created(self):
-        self.logger.info(f"Instance created: channel={self.msgName}, protocol={self.__class__.__name__}")
+        self.logger.info(f"Instance created: channel={self.msgName}, protocol={self.__class__.__name__}, baudrate:{self.baudrate}")
         self.logger.info(f"Instance message: {self.msgName}, status={self._BaseDriver__isRunning}")
         self.logger.info(f"Running status: {self._BaseDriver__isRunning}")
 
@@ -70,17 +70,22 @@ class LoggingMixin:
         self.logger.info(f"Running status: {self._BaseDriver__isRunning}")
 
     def log_error(self, error_msg):
-        self.logger.error(f"Error: channel={self.msgName}, status={self._BaseDriver__isRunning}, error={error_msg}, Check the logging file {self.log_file}")
+        self.logger.error(f"Error msg [{self.numOfMsgs}]: channel={self.msgName}, status={self._BaseDriver__isRunning}, error={error_msg}, Check the logging file {self.log_file}")
 
     def log_warning(self, warning_msg):
-        self.logger.warning(f"Warning: channel={self.msgName}, status={self._BaseDriver__isRunning}, warning={warning_msg}")
+        self.logger.warning(f"Warning msg [{self.numOfMsgs}]: channel={self.msgName}, status={self._BaseDriver__isRunning}, warning={warning_msg}")
 
-    def log_sending(self, message):
-        self.logger.info(f"Sending: channel={self.msgName}, message={message}, status={self._BaseDriver__isRunning}")
-        self.logger.info("Channel is still connected")
+    def log_sent(self, message):
+        self.logger.info(f"Sent msg [{self.numOfMsgs}]: channel={self.msgName}, msgID={self.msgID} message={message}, status={self._BaseDriver__isRunning}")
+
+    def log_received(self, message):
+        self.logger.info(f"Received msg [{self.numOfMsgs}]: channel={self.msgName}, message={message}, status={self._BaseDriver__isRunning}")
 
     def log_stop(self):
-        self.logger.info(f"Sending stopped for channel={self.msgName}")
+        self.logger.info(f"Operation [{self.operation}] stopped for channel={self.msgName} numOfMsgs={self.numOfMsgs}")
+
+    def log_connected(self, port):
+        self.logger.info(f"Connected to port={port} for channel={self.msgName}")
 
     def log_info(self, info):
         self.logger.info(info)

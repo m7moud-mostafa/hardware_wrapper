@@ -8,6 +8,8 @@ Email: mah2002moud@gmail.com
 
 from abc import ABC, abstractmethod
 from hardware.logging_mixin import LoggingMixin
+import threading
+import time
 
 class BaseDriver(LoggingMixin, ABC):
     """
@@ -16,27 +18,87 @@ class BaseDriver(LoggingMixin, ABC):
     """
     instancesInfo = {}
 
-    def __init__(self, msgName, operation, msgID):
+    def __init__(self, msgName, operation, msgID, timeout=5):
         """Initialize the driver and log its creation."""
         # Set attributes
         self.msgName = msgName
         self.operation = operation
         self.msgID = msgID
+        self.timeout = timeout
+        self.__numOfMsgs = 0
         self.__isRunning = True
+        self._isConnected = False
+        self.__pending_message = None
 
         # Call the parent class's __init__ (LoggingMixin) to initialize the logger
         super().__init__()
+        self._try_to_connect()
 
         # Store instance info
         BaseDriver.instancesInfo[self.__msgName] = {
             "id": self.__msgID,
             "protocol": self.__class__.__name__,
             "operation": self.__operation,
-            "running": self.__isRunning
+            "running": self.__isRunning,
+            "numOfMsgs": self.__numOfMsgs
         }
 
         # Now that logger is initialized, log instance creation
         self.log_instance_created()
+
+    def _try_to_connect(self):
+        """Keep trying to connect until successful, with a maximum retry count."""
+        max_retries = 60 * 3 / 2 
+        retries = 0
+        while retries < max_retries:
+            status = self.connect()
+            if not status:  # 0 indicates success
+                self._isConnected = True
+                return
+            else:
+                self._isConnected = False
+                retries += 1
+                time.sleep(2)
+        self.log_error("Max connection attempts reached.")
+        raise ConnectionError("Unable to establish connection after maximum retries.")
+
+
+    def __increment_msg_count(self):
+        """A function used to increase the self.__numOfMsgs"""
+        self.__numOfMsgs += 1
+        BaseDriver.instancesInfo[self.__msgName]["numOfMsgs"] = self.__numOfMsgs
+
+
+    def send(self, msg):
+        """A function that sends the message in a thread"""
+        statusContainer = []
+        if self.__pending_message is None:
+            self.__pending_message = msg # to prevent from dublicate messages
+            
+            try:
+                th = threading.Thread(target=lambda: statusContainer.append(self.threaded_send(msg)))
+                th.start()
+                th.join()
+                if not statusContainer[0]:
+                   self.__increment_msg_count()
+                return statusContainer[0]
+            except Exception as e:
+                self.log_error(e)
+                return 1 # failure
+            finally:
+                self.__pending_message = None
+
+    def receive(self):
+        """A function that receive the message in a thread"""
+        msgContainer = []
+        try:
+            th = threading.Thread(target= lambda: msgContainer.append(self.threaded_receive()))
+            th.start()
+            th.join()
+            return msgContainer[0]
+        except Exception as e:
+            self.log_error(e)
+            return None
 
     def stop(self):
         """Stops the driver safely and logs the event."""
@@ -46,22 +108,29 @@ class BaseDriver(LoggingMixin, ABC):
 
     @abstractmethod
     def connect(self):
+        """To be implemented in child class"""
         pass
 
     @abstractmethod
     def disconnect(self):
-        pass
-
-    @abstractmethod
-    def send(self):
         """To be implemented in child class"""
         pass
 
     @abstractmethod
-    def receive(self):
+    def threaded_send(self, msg):
         """To be implemented in child class"""
         pass
 
+    @abstractmethod
+    def threaded_receive(self):
+        """To be implemented in child class"""
+        pass
+
+    def __del__(self):
+        """Ensure the serial connection is closed on deletion"""
+        self.disconnect()
+
+################### Getters and Setters ###################
     @property
     def msgName(self):
         """Returns the msg name"""
@@ -99,3 +168,20 @@ class BaseDriver(LoggingMixin, ABC):
         if not (isinstance(value, int) or value is None):
             raise TypeError("msgID must be of type (int)")
         self.__msgID = value
+
+    @property
+    def timeout(self):
+        """Returns the timout"""
+        return self.__timeout
+
+    @timeout.setter
+    def timeout(self, value):
+        """Sets the timeout value"""
+        if not isinstance(value, int):
+            raise TypeError("'timeout' must be of type (int)")
+        self.__timeout = value
+
+    @property
+    def numOfMsgs(self):
+        """Returns the numOfMsgs, It got not setter"""
+        return self.__numOfMsgs
