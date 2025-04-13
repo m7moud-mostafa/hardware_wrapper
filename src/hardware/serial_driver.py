@@ -98,46 +98,45 @@ class SerialSender(SerialBaseDriver):
     def threaded_receive(self):
         raise NotImplementedError("'SerialSender' object can't be used to receive messages")
 
-# class SerialSender(SerialBaseDriver)
+class SerialReceiver(SerialBaseDriver):
 
-#     def receive(self):
-#         """Receive data over the serial connection and extract the msgID"""
-#         if self.serial_conn and self.serial_conn.is_open:
-#             try:
-#                 pass
-#             except serial.SerialException as e:
-#                 print(f"Failed to receive data: {e}")
-#         return None, None
+    def __init__(self, msgName, port, msgID=None, msgIDLength=0, baudrate=115200, timeout=5):
+        super().__init__(msgName, "receive", port, msgID, msgIDLength, baudrate, timeout)
+
+    def threaded_receive(self):
+        """Receive data over the serial connection with msgID"""
+        start_time = time.time()
+        while time.time() - start_time < self.timeout:
+            if self.serial_conn and self.serial_conn.is_open:
+                try:
+                    read = self.serial_conn.readline()
+                    if read:
+                        if self.msgIDLength:
+                            try:
+                                id = int.from_bytes(read[:self.msgIDLength])
+                                if id == self.msgID:
+                                    msg = read[self.msgIDLength:-1]
+                                    self.log_received(msg)
+                                else:
+                                    return None
+                            except:
+                                return None
+                        else:
+                            msg = read
+                            self.log_received(msg)
+                        return msg
+                except serial.SerialException as e:
+                    self.log_error(f"Error: {e}, Retrying")
+                    self.serial_conn.close()
+                    self._try_to_connect()
+            else:
+                self.log_error("Device disconnected, Retrying")
+                self._try_to_connect()
+        self.log_error(f"Failed to receive: data within timeout")
+        return None
+
+    def threaded_send(self):
+        raise NotImplementedError("'SerialReceiver' object can't be used to send messages")
 
 if __name__ == "__main__":
-    import struct
-
-    # Create a single SerialSender instance
-    sender = SerialSender("test", "/dev/ttyACM0", msgID=0x10, msgIDLength=1, baudrate=9600)
-    
-    # Wait for Arduino to initialize
-    time.sleep(2)
-    
-    value = 0.0
-    while True:
-        value += 1.0
-        
-        # Send with msgID=0x10 (e.g., motor)
-        sender.msgID = 0x10
-        data = struct.pack('<f', value)
-        status = sender.send(data)
-        if status == 0:
-            print(f"Sent msgID=0x10, value={value}")
-        else:
-            print(f"Failed to send msgID=0x10, value={value}")
-        
-        # Send with msgID=0x11 (e.g., LED)
-        sender.msgID = 0x11
-        data = struct.pack('<f', value * 2)
-        status = sender.send(data)
-        if status == 0:
-            print(f"Sent msgID=0x11, value={value * 2}")
-        else:
-            print(f"Failed to send msgID=0x11, value={value * 2}")
-        
-        time.sleep(1)
+    pass
