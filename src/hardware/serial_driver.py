@@ -12,7 +12,9 @@ import time
 
 class SerialBaseDriver(BaseDriver):
     """Base class for serial communication"""
-
+    numOfReceivedBytes = 0
+    numOfSentBytes = 0
+    SERIALBUFFER = 64 # in bytes
     def __init__(self, msgName, operation, port, msgID=None, msgIDLength=0, baudrate=115200, timeout=5):
         self.port = port
         self.baudrate = baudrate
@@ -37,6 +39,16 @@ class SerialBaseDriver(BaseDriver):
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.close()
             self.stop()
+
+    def clean_buffer(self, opretion):
+        if opretion == "send":
+                if SerialBaseDriver.numOfSentBytes >= SerialBaseDriver.SERIALBUFFER:
+                    self.serial_conn.reset_input_buffer()
+                    SerialBaseDriver.numOfSentBytes = 0
+        elif opretion == "receive":
+                if SerialBaseDriver.numOfReceivedBytes >= SerialBaseDriver.SERIALBUFFER:
+                    self.serial_conn.reset_output_buffer()
+                    SerialBaseDriver.numOfReceivedBytes = 0
 
     @property
     def port(self):
@@ -82,7 +94,9 @@ class SerialSender(SerialBaseDriver):
             if self.serial_conn and self.serial_conn.is_open:
                 try:
                     payload = (self.msgID.to_bytes(self.msgIDLength, 'big') + data) if self.msgIDLength else data
+                    self.clean_buffer(self.operation)
                     self.serial_conn.write(payload)
+                    SerialBaseDriver.numOfSentBytes = SerialBaseDriver.numOfSentBytes + len(payload)
                     self.log_sent(data)
                     return 0
                 except serial.SerialException as e:
