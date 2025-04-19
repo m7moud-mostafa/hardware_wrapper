@@ -26,7 +26,7 @@ class LoggingMixin:
             **kwargs: Arbitrary keyword arguments.
         """
         super().__init__(*args, **kwargs)
-        logger_name = f'hardware.{self.__class__.__name__}.{self.msgName}'
+        logger_name = f'hardware.{self.__class__.__name__}.{self.msgName}.server'
         self.logger = logging.getLogger(logger_name)
         self.logger.setLevel(logging.DEBUG)
 
@@ -78,9 +78,28 @@ class LoggingMixin:
     def log_sent(self, message):
         self.logger.info(f"Sent msg [{self.numOfMsgs}]: channel={self.msgName}, msgID={self.msgID} message={message}, status={self._BaseDriver__isRunning}")
 
-    def log_received(self, message):
-        self.logger.info(f"Received msg [{self.numOfMsgs}]: channel={self.msgName}, message={message}, status={self._BaseDriver__isRunning}")
-
+    def log_received(self, msg_id, message):
+        # Get the BaseDriver class from the instance
+        BaseDriver = self.__class__.__bases__[0]  # Gets the first parent class
+        
+        # Safely get the message count
+        numOfMsgs = getattr(BaseDriver, 'channelsOperationsInfo', {}).get(
+            self.channel, {}).get(self.operation, {}).get(msg_id, 0)
+        
+        # Find the matching msgName
+        channel_name = self.msgName  # Default to our own msgName if not found
+        for msgName, info in getattr(BaseDriver, 'instancesInfo', {}).items():
+            if info.get("channel") == self.channel and info.get("id") == msg_id:
+                channel_name = msgName
+                break
+        # Now log it using the instance’s own msgName and status
+        self.logger.info(
+            f"Received msg [{numOfMsgs}]: "
+            f"channel={channel_name}, "
+            f"msgID={msg_id}, "
+            f"message={message}, "
+            f"status={self._BaseDriver__isRunning}"
+        )
     def log_stop(self):
         self.logger.info(f"Operation [{self.operation}] stopped for channel={self.msgName} numOfMsgs={self.numOfMsgs}")
 

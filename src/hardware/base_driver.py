@@ -17,34 +17,66 @@ class BaseDriver(LoggingMixin, ABC):
     Includes necessary functions for any driver.
     """
     instancesInfo = {}
-
-    def __init__(self, msgName, operation, msgID, timeout=5):
+    receivedMsgsBuffer = {}
+    channelsOperationsInfo = {}
+    def __init__(self, msgName, operation, channel, msgID, timeout=5):
         """Initialize the driver and log its creation."""
         # Set attributes
         self.msgName = msgName
         self.operation = operation
+        self.channel = channel
         self.msgID = msgID
         self.timeout = timeout
         self.__numOfMsgs = 0
         self.__isRunning = True
         self._isConnected = False
         self.__pending_message = None
+        self.central_receive_thread = None
 
         # Call the parent class's __init__ (LoggingMixin) to initialize the logger
         super().__init__()
         self._try_to_connect()
+        self.__store_info()
+        self._set_central_receiver()
 
-        # Store instance info
-        BaseDriver.instancesInfo[self.__msgName] = {
-            "id": self.__msgID,
+
+        self.log_instance_created()
+
+    def __store_info(self):
+        """Stores info of instances when createtion"""
+
+        BaseDriver.instancesInfo[self.msgName] = {
+            "id": self.msgID,
             "protocol": self.__class__.__name__,
-            "operation": self.__operation,
+            "channel": self.channel,
+            "operation": self.operation,
             "running": self.__isRunning,
             "numOfMsgs": self.__numOfMsgs
         }
 
-        # Now that logger is initialized, log instance creation
-        self.log_instance_created()
+        if not (self.channel in BaseDriver.channelsOperationsInfo):
+            BaseDriver.channelsOperationsInfo[self.channel] = {"receive": {}, "send": {}, "receivedInBuffer": 0, "sentInBuffer": 0}
+
+        BaseDriver.channelsOperationsInfo[self.channel][self.operation][self.msgID] = 0
+
+    def _set_central_receiver(self):
+        """sets up central receiver variable"""
+        if self.operation == "receive":
+            if not (self.channel in BaseDriver.receivedMsgsBuffer):
+                BaseDriver.receivedMsgsBuffer[self.channel] = {}
+                BaseDriver.receivedMsgsBuffer[self.channel][self.msgID] = None
+                try:
+                    self.central_receive_thread = threading.Thread(target=self.central_receive)
+                    self.central_receive_thread.start()
+                except Exception as e:
+                    self.log_error(e)
+            BaseDriver.receivedMsgsBuffer[self.channel][self.msgID] = None
+
+
+    @abstractmethod
+    def central_receive(self):
+        """Receives all the msgs from channel and adds it to the receivedMsgsBuffer"""
+        pass
 
     def _try_to_connect(self):
         """Keep trying to connect until successful, with a maximum retry count."""
@@ -65,8 +97,13 @@ class BaseDriver(LoggingMixin, ABC):
 
     def __increment_msg_count(self):
         """A function used to increase the self.__numOfMsgs"""
-        self.__numOfMsgs += 1
-        BaseDriver.instancesInfo[self.__msgName]["numOfMsgs"] = self.__numOfMsgs
+        if self.operation == "send":
+            BaseDriver.channelsOperationsInfo[self.channel][self.operation][self.msgID] += 1
+            self.__numOfMsgs += 1
+            BaseDriver.instancesInfo[self.msgName]["numOfMsgs"] = self.__numOfMsgs
+        else:
+            self.__numOfMsgs = BaseDriver.channelsOperationsInfo[self.channel][self.operation][self.msgID]
+            BaseDriver.instancesInfo[self.msgName]["numOfMsgs"] = self.__numOfMsgs
 
 
     def send(self, msg):
@@ -90,17 +127,11 @@ class BaseDriver(LoggingMixin, ABC):
 
     def receive(self):
         """A function that receive the message in a thread"""
-        msgContainer = []
-        try:
-            th = threading.Thread(target= lambda: msgContainer.append(self.threaded_receive()))
-            th.start()
-            th.join()
-            if msgContainer[0]:
-                self.__increment_msg_count
-            return msgContainer[0]
-        except Exception as e:
-            self.log_error(e)
-            return None
+        msg = BaseDriver.receivedMsgsBuffer[self.channel][self.msgID]
+        self.__increment_msg_count()
+        # self.log_received(msg)
+        return msg
+
 
     def stop(self):
         """Stops the driver safely and logs the event."""
@@ -123,10 +154,10 @@ class BaseDriver(LoggingMixin, ABC):
         """To be implemented in child class"""
         pass
 
-    @abstractmethod
-    def threaded_receive(self):
-        """To be implemented in child class"""
-        pass
+    # @abstractmethod
+    # def threaded_receive(self):
+    #     """To be implemented in child class"""
+    #     pass
 
     def __del__(self):
         """Ensure the serial connection is closed on deletion"""
@@ -143,6 +174,8 @@ class BaseDriver(LoggingMixin, ABC):
         """Sets the msg name value"""
         if not isinstance(value, str):
             raise TypeError("'msgName' must be of type (str)")
+        if value in BaseDriver.instancesInfo:
+            raise ValueError("msgName must have a unique value")
         self.__msgName = value
 
     @property
@@ -161,14 +194,36 @@ class BaseDriver(LoggingMixin, ABC):
 
     @property
     def msgID(self):
-        """Returns the msgID"""
+        """Returns the msgID value"""
         return self.__msgID
 
     @msgID.setter
     def msgID(self, value):
-        """Sets the msgID value"""
-        if not (isinstance(value, int) or value is None):
-            raise TypeError("msgID must be of type (int)")
+        """Sets the msgID type value with uniqueness and None checks per operation and channel"""
+        if value is not None and not isinstance(value, int):
+            raise TypeError("msgID must be an integer or None")
+
+        existing = BaseDriver.instancesInfo.values() if BaseDriver.instancesInfo else []
+        same_op_chan = [info for info in existing
+                        if info["operation"] == self.operation and info["channel"] == self.channel]
+
+        if value is None:
+            if same_op_chan:
+                raise ValueError(
+                    f"Cannot set msgID to None: another instance in operation '{self.operation}' "
+                    f"and channel '{self.channel}' already has msgID or msgID=None"
+                )
+        else:
+            if any(info["id"] is None for info in same_op_chan):
+                raise ValueError(
+                    f"Cannot set msgID to {value}: an instance in operation '{self.operation}' "
+                    f"and channel '{self.channel}' has msgID=None"
+                )
+            if any(info["id"] == value for info in same_op_chan):
+                raise ValueError(
+                    f"An instance with msgID {value} already exists in operation '{self.operation}' "
+                    f"and channel '{self.channel}'"
+                )
         self.__msgID = value
 
     @property
@@ -187,3 +242,13 @@ class BaseDriver(LoggingMixin, ABC):
     def numOfMsgs(self):
         """Returns the numOfMsgs, It got not setter"""
         return self.__numOfMsgs
+
+    @property
+    def channel(self):
+        return self.__channel
+
+    @channel.setter
+    def channel(self, value):
+        if not isinstance(value, str):
+            raise TypeError("'channel' must be of type (str)")
+        self.__channel = value
